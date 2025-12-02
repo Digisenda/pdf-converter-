@@ -362,7 +362,7 @@
       </div>
 
       <div class="status" id="estado">
-        Cargando librerías...
+        Listo para convertir. Selecciona un PDF para comenzar.
       </div>
     </div>
 
@@ -397,33 +397,13 @@
     </footer>
   </div>
 
-  <!-- Librerías externas -->
+  <!-- Librerías externas - ORDEN CORRECTO -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.min.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous"></script>
 
   <script>
-    // Esperar a que todas las librerías se carguen
-    window.addEventListener('load', function() {
-      // Configurar PDF.js worker
-      if (typeof pdfjsLib !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      }
-
-      // Verificar dependencias después de que todo cargue
-      setTimeout(verificarYInicializar, 500);
-    });
-
-    function verificarYInicializar() {
-      if (verificarDependencias()) {
-        actualizarEstado("Selecciona un PDF para comenzar");
-        setBotonProcesando(false);
-      } else {
-        actualizarEstado("❌ Error cargando librerías. Recarga la página.", 'error');
-        setBotonProcesando(true);
-      }
-    }
 
     // ========================================
     // CONVERSOR PDF A WORD CON OCR HÍBRIDO
@@ -438,15 +418,16 @@
         { nombre: 'FileSaver.js', objeto: 'saveAs' }
       ];
 
-      const faltantes = dependencias.filter(dep => typeof window[dep.objeto] === 'undefined');
+      let todasDisponibles = true;
       
-      if (faltantes.length > 0) {
-        const nombres = faltantes.map(d => d.nombre).join(', ');
-        console.error(`Faltan las siguientes librerías: ${nombres}`);
-        return false;
+      for (let dep of dependencias) {
+        if (typeof window[dep.objeto] === 'undefined') {
+          console.warn(`⚠️ ${dep.nombre} no está disponible`);
+          todasDisponibles = false;
+        }
       }
       
-      return true;
+      return todasDisponibles;
     }
 
     // --------- Utilidades de UI ---------
@@ -489,7 +470,7 @@
     }
 
     function resetUI() {
-      actualizarEstado("Selecciona un PDF para comenzar");
+      actualizarEstado("Listo para convertir. Selecciona un PDF para comenzar.");
       actualizarProgreso(0);
       const input = document.getElementById("pdfFile");
       if (input) input.value = "";
@@ -679,29 +660,37 @@
     let enEjecucion = false;
 
     async function convertir() {
+      // Verificar que no haya conversión en proceso
       if (enEjecucion) {
         console.warn("Ya hay una conversión en proceso.");
         return;
       }
 
-      if (!verificarDependencias()) {
-        alert("Error: Las librerías aún no se han cargado. Por favor espera un momento y vuelve a intentar.");
+      // Verificar que las librerías estén listas
+      if (!libreriasListas) {
+        alert("Error: Las librerías aún no se han cargado completamente.\n\nPor favor espera un momento. Si el mensaje persiste, recarga la página.");
         return;
       }
 
-      enEjecucion = true;
-      setBotonProcesando(true);
+      // Doble verificación de dependencias
+      if (!verificarDependencias()) {
+        alert("Error: Algunas librerías no están disponibles.\n\nPor favor recarga la página.");
+        return;
+      }
 
       const input = document.getElementById("pdfFile");
       const archivo = input?.files?.[0];
 
+      // Validar que se haya seleccionado un archivo
       const validacion = validarArchivoPDF(archivo);
       if (!validacion.valido) {
         alert(validacion.error);
-        enEjecucion = false;
-        setBotonProcesando(false);
         return;
       }
+
+      // Iniciar conversión
+      enEjecucion = true;
+      setBotonProcesando(true);
 
       try {
         actualizarEstado("📂 Cargando PDF...", 'processing');
@@ -779,6 +768,62 @@
         alert("Error al generar el archivo. Intenta nuevamente.");
         throw error;
       }
+    }
+
+    // --------- INICIALIZACIÓN AL CARGAR LA PÁGINA ---------
+    // Variables globales de estado
+    let libreriasListas = false;
+
+    // Función de inicialización
+    function inicializarApp() {
+      console.log('🔄 Iniciando verificación de librerías...');
+      
+      // Verificar dependencias
+      const dependencias = [
+        { nombre: 'PDF.js', objeto: 'pdfjsLib' },
+        { nombre: 'Tesseract.js', objeto: 'Tesseract' },
+        { nombre: 'html-docx-js', objeto: 'htmlDocx' },
+        { nombre: 'FileSaver.js', objeto: 'saveAs' }
+      ];
+
+      let todasCargadas = true;
+      const faltantes = [];
+
+      for (let dep of dependencias) {
+        if (typeof window[dep.objeto] === 'undefined') {
+          todasCargadas = false;
+          faltantes.push(dep.nombre);
+          console.warn(`⚠️ ${dep.nombre} no está disponible`);
+        } else {
+          console.log(`✅ ${dep.nombre} cargada correctamente`);
+        }
+      }
+
+      if (todasCargadas) {
+        // Configurar PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          console.log('✅ PDF.js worker configurado');
+        }
+        
+        libreriasListas = true;
+        console.log('✅ TODAS LAS LIBRERÍAS CARGADAS EXITOSAMENTE');
+        actualizarEstado("Listo para convertir. Selecciona un PDF para comenzar.");
+      } else {
+        console.error('❌ Librerías faltantes:', faltantes);
+        actualizarEstado("❌ Error cargando librerías. Recarga la página.", 'error');
+      }
+    }
+
+    // Ejecutar inicialización cuando el DOM esté completamente cargado
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() {
+        // Dar un pequeño tiempo para que las librerías terminen de cargar
+        setTimeout(inicializarApp, 100);
+      });
+    } else {
+      // Si el DOM ya está cargado, ejecutar inmediatamente
+      setTimeout(inicializarApp, 100);
     }
   </script>
 </body>
