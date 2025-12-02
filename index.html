@@ -362,7 +362,7 @@
       </div>
 
       <div class="status" id="estado">
-        Cargando librerías...
+        Listo para convertir. Selecciona un PDF para comenzar.
       </div>
     </div>
 
@@ -404,24 +404,38 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous"></script>
 
   <script>
+    // Variables globales de inicialización
+    let libreriasListas = false;
+    let intentosVerificacion = 0;
+    const MAX_INTENTOS = 10;
+
     // Esperar a que todas las librerías se carguen
     window.addEventListener('load', function() {
-      // Configurar PDF.js worker
-      if (typeof pdfjsLib !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      }
-
-      // Verificar dependencias después de que todo cargue
-      setTimeout(verificarYInicializar, 500);
+      console.log('Página cargada, iniciando verificación de librerías...');
+      verificarYInicializarConReintentos();
     });
 
-    function verificarYInicializar() {
+    function verificarYInicializarConReintentos() {
+      intentosVerificacion++;
+      console.log(`Intento ${intentosVerificacion} de ${MAX_INTENTOS}`);
+
+      // Configurar PDF.js worker si está disponible
+      if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        console.log('PDF.js worker configurado');
+      }
+
       if (verificarDependencias()) {
-        actualizarEstado("Selecciona un PDF para comenzar");
-        setBotonProcesando(false);
+        libreriasListas = true;
+        actualizarEstado("Listo para convertir. Selecciona un PDF para comenzar.");
+        console.log('✅ Todas las librerías cargadas correctamente');
+      } else if (intentosVerificacion < MAX_INTENTOS) {
+        // Reintentar después de 500ms
+        setTimeout(verificarYInicializarConReintentos, 500);
       } else {
+        // Después de todos los intentos, mostrar error
         actualizarEstado("❌ Error cargando librerías. Recarga la página.", 'error');
-        setBotonProcesando(true);
+        console.error('❌ No se pudieron cargar todas las librerías después de', MAX_INTENTOS, 'intentos');
       }
     }
 
@@ -438,14 +452,25 @@
         { nombre: 'FileSaver.js', objeto: 'saveAs' }
       ];
 
-      const faltantes = dependencias.filter(dep => typeof window[dep.objeto] === 'undefined');
+      const faltantes = [];
+      const cargadas = [];
+      
+      for (let dep of dependencias) {
+        if (typeof window[dep.objeto] === 'undefined') {
+          faltantes.push(dep.nombre);
+          console.warn(`⚠️ ${dep.nombre} aún no está disponible`);
+        } else {
+          cargadas.push(dep.nombre);
+          console.log(`✅ ${dep.nombre} cargada correctamente`);
+        }
+      }
       
       if (faltantes.length > 0) {
-        const nombres = faltantes.map(d => d.nombre).join(', ');
-        console.error(`Faltan las siguientes librerías: ${nombres}`);
+        console.error(`Faltan las siguientes librerías: ${faltantes.join(', ')}`);
         return false;
       }
       
+      console.log(`Todas las librerías cargadas: ${cargadas.join(', ')}`);
       return true;
     }
 
@@ -489,7 +514,7 @@
     }
 
     function resetUI() {
-      actualizarEstado("Selecciona un PDF para comenzar");
+      actualizarEstado("Listo para convertir. Selecciona un PDF para comenzar.");
       actualizarProgreso(0);
       const input = document.getElementById("pdfFile");
       if (input) input.value = "";
@@ -679,29 +704,31 @@
     let enEjecucion = false;
 
     async function convertir() {
+      // Verificar que no haya conversión en proceso
       if (enEjecucion) {
         console.warn("Ya hay una conversión en proceso.");
         return;
       }
 
-      if (!verificarDependencias()) {
-        alert("Error: Las librerías aún no se han cargado. Por favor espera un momento y vuelve a intentar.");
+      // Verificar que las librerías estén listas
+      if (!libreriasListas || !verificarDependencias()) {
+        alert("Error: Las librerías aún no se han cargado completamente.\n\nPor favor espera un momento y vuelve a intentar, o recarga la página.");
         return;
       }
-
-      enEjecucion = true;
-      setBotonProcesando(true);
 
       const input = document.getElementById("pdfFile");
       const archivo = input?.files?.[0];
 
+      // Validar que se haya seleccionado un archivo
       const validacion = validarArchivoPDF(archivo);
       if (!validacion.valido) {
         alert(validacion.error);
-        enEjecucion = false;
-        setBotonProcesando(false);
         return;
       }
+
+      // Iniciar conversión
+      enEjecucion = true;
+      setBotonProcesando(true);
 
       try {
         actualizarEstado("📂 Cargando PDF...", 'processing');
