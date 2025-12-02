@@ -1,0 +1,23 @@
+# robots.txt para DigiSenda AI - Conversor PDF a Word
+
+# Permitir todos los crawlers
+User-agent: *
+Allow: /
+
+# Crawlers específicos
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Slurp
+Allow: /
+
+# Evitar crawlear archivos innecesarios
+Disallow: /assets/*.png$
+Disallow: /assets/*.jpg$
+Disallow: /assets/*.svg$
+
+# Sitemap
+Sitemap: https://TU-DOMINIO.vercel.app/sitemap.xml
