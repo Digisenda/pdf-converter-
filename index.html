@@ -397,47 +397,103 @@
     </footer>
   </div>
 
-  <!-- Librerías externas -->
+  <!-- Librerías externas con manejo de eventos onload -->
+  <script>
+    // Variables globales de inicialización
+    let libreriasListas = false;
+    let libreriasCargadas = {
+      pdfjsLib: false,
+      tesseract: false,
+      htmlDocx: false,
+      fileSaver: false
+    };
+
+    // Función que verifica si todas las librerías están cargadas
+    function verificarTodasLaLibrerias() {
+      const todasCargadas = Object.values(libreriasCargadas).every(cargada => cargada === true);
+      
+      if (todasCargadas && !libreriasListas) {
+        libreriasListas = true;
+        
+        // Configurar PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          console.log('✅ PDF.js worker configurado');
+        }
+        
+        console.log('✅ TODAS LAS LIBRERÍAS CARGADAS EXITOSAMENTE');
+        actualizarEstado("Listo para convertir. Selecciona un PDF para comenzar.");
+      }
+    }
+
+    // Iniciar verificación cuando el DOM esté listo
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', iniciarVerificacionLibrerias);
+    } else {
+      iniciarVerificacionLibrerias();
+    }
+
+    function iniciarVerificacionLibrerias() {
+      console.log('🔄 Iniciando verificación de librerías...');
+      
+      // Iniciar verificación con reintentos
+      let intentos = 0;
+      const maxIntentos = 20;
+      
+      const intervalo = setInterval(function() {
+        intentos++;
+        console.log(`Verificación intento ${intentos}/${maxIntentos}`);
+        
+        // Verificar cada librería
+        if (typeof pdfjsLib !== 'undefined' && !libreriasCargadas.pdfjsLib) {
+          libreriasCargadas.pdfjsLib = true;
+          console.log('✅ PDF.js cargado');
+        }
+        
+        if (typeof Tesseract !== 'undefined' && !libreriasCargadas.tesseract) {
+          libreriasCargadas.tesseract = true;
+          console.log('✅ Tesseract.js cargado');
+        }
+        
+        if (typeof htmlDocx !== 'undefined' && !libreriasCargadas.htmlDocx) {
+          libreriasCargadas.htmlDocx = true;
+          console.log('✅ html-docx-js cargado');
+        }
+        
+        if (typeof saveAs !== 'undefined' && !libreriasCargadas.fileSaver) {
+          libreriasCargadas.fileSaver = true;
+          console.log('✅ FileSaver.js cargado');
+        }
+        
+        // Verificar si todas están cargadas
+        verificarTodasLaLibrerias();
+        
+        // Si todas las librerías están listas, detener el intervalo
+        if (libreriasListas) {
+          clearInterval(intervalo);
+        } else if (intentos >= maxIntentos) {
+          // Si se alcanzó el máximo de intentos, mostrar error
+          clearInterval(intervalo);
+          console.error('❌ Timeout: No se pudieron cargar todas las librerías');
+          
+          // Mostrar qué librerías faltan
+          const faltantes = Object.keys(libreriasCargadas)
+            .filter(key => !libreriasCargadas[key])
+            .map(key => key);
+          
+          console.error('❌ Librerías faltantes:', faltantes);
+          actualizarEstado("❌ Error cargando librerías. Recarga la página.", 'error');
+        }
+      }, 200); // Verificar cada 200ms
+    }
+  </script>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous"></script>
 
   <script>
-    // Variables globales de inicialización
-    let libreriasListas = false;
-    let intentosVerificacion = 0;
-    const MAX_INTENTOS = 10;
-
-    // Esperar a que todas las librerías se carguen
-    window.addEventListener('load', function() {
-      console.log('Página cargada, iniciando verificación de librerías...');
-      verificarYInicializarConReintentos();
-    });
-
-    function verificarYInicializarConReintentos() {
-      intentosVerificacion++;
-      console.log(`Intento ${intentosVerificacion} de ${MAX_INTENTOS}`);
-
-      // Configurar PDF.js worker si está disponible
-      if (typeof pdfjsLib !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        console.log('PDF.js worker configurado');
-      }
-
-      if (verificarDependencias()) {
-        libreriasListas = true;
-        actualizarEstado("Listo para convertir. Selecciona un PDF para comenzar.");
-        console.log('✅ Todas las librerías cargadas correctamente');
-      } else if (intentosVerificacion < MAX_INTENTOS) {
-        // Reintentar después de 500ms
-        setTimeout(verificarYInicializarConReintentos, 500);
-      } else {
-        // Después de todos los intentos, mostrar error
-        actualizarEstado("❌ Error cargando librerías. Recarga la página.", 'error');
-        console.error('❌ No se pudieron cargar todas las librerías después de', MAX_INTENTOS, 'intentos');
-      }
-    }
 
     // ========================================
     // CONVERSOR PDF A WORD CON OCR HÍBRIDO
@@ -452,26 +508,16 @@
         { nombre: 'FileSaver.js', objeto: 'saveAs' }
       ];
 
-      const faltantes = [];
-      const cargadas = [];
+      let todasDisponibles = true;
       
       for (let dep of dependencias) {
         if (typeof window[dep.objeto] === 'undefined') {
-          faltantes.push(dep.nombre);
-          console.warn(`⚠️ ${dep.nombre} aún no está disponible`);
-        } else {
-          cargadas.push(dep.nombre);
-          console.log(`✅ ${dep.nombre} cargada correctamente`);
+          console.warn(`⚠️ ${dep.nombre} no está disponible`);
+          todasDisponibles = false;
         }
       }
       
-      if (faltantes.length > 0) {
-        console.error(`Faltan las siguientes librerías: ${faltantes.join(', ')}`);
-        return false;
-      }
-      
-      console.log(`Todas las librerías cargadas: ${cargadas.join(', ')}`);
-      return true;
+      return todasDisponibles;
     }
 
     // --------- Utilidades de UI ---------
@@ -711,8 +757,14 @@
       }
 
       // Verificar que las librerías estén listas
-      if (!libreriasListas || !verificarDependencias()) {
-        alert("Error: Las librerías aún no se han cargado completamente.\n\nPor favor espera un momento y vuelve a intentar, o recarga la página.");
+      if (!libreriasListas) {
+        alert("Error: Las librerías aún no se han cargado completamente.\n\nPor favor espera un momento. Si el mensaje persiste, recarga la página.");
+        return;
+      }
+
+      // Doble verificación de dependencias
+      if (!verificarDependencias()) {
+        alert("Error: Algunas librerías no están disponibles.\n\nPor favor recarga la página.");
         return;
       }
 
